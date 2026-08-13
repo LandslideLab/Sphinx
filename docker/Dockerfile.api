@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+# Install the Sphinx backend (FastAPI API + MCP server).
+COPY backend/ /srv/backend/
+RUN pip install --no-cache-dir ./backend
+
+# Shared SQLite data volume lives under /srv/data.
+RUN mkdir -p /srv/data
+
+EXPOSE 8001 8100
+
+CMD ["sphinx-api"]

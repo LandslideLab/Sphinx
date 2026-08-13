@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: sphinx-api
+    environment:
+      SPHINX_DATABASE_URL: sqlite:///data/sphinx.db
+      SPHINX_SEED_DEMO_DATA: "true"
+      SPHINX_DEFAULT_POLICY_SEED: "true"
+    ports:
+      - "8001:8001"
+    volumes:
+      - sphinx-data:/srv/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mcp:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: sphinx-mcp
+    command: ["python", "-m", "sphinx.mcp.server", "--http", "--port", "8100"]
+    environment:
+      SPHINX_DATABASE_URL: sqlite:///data/sphinx.db
+    ports:
+      - "8100:8100"
+    volumes:
+      - sphinx-data:/srv/data
+    depends_on:
+      api:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: sphinx-web
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      mcp:
+        condition: service_started
+
+volumes:
+  sphinx-data:

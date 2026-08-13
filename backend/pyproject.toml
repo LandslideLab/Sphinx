@@ -1,0 +1,32 @@
+[project]
+name = "sphinx-backend"
+version = "0.1.0"
+description = "Sphinx - framework-agnostic Agent HITL approval control plane"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "mcp>=1.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+sphinx-api = "sphinx.main:main"
+sphinx-mcp = "sphinx.mcp.server:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sphinx*"]

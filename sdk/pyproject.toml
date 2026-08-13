@@ -1,0 +1,20 @@
+[project]
+name = "sphinx-sdk"
+version = "0.1.0"
+description = "Sphinx client SDK and framework adapters for agent HITL approval"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+mcp-transport = ["mcp>=1.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sphinx_sdk*"]
