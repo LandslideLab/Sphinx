@@ -16,6 +16,7 @@ import time
 
 import httpx
 
+from sphinx_sdk import Capture
 from sphinx_sdk.client import SphinxClient
 
 API = "http://localhost:8001"
@@ -88,15 +89,34 @@ def main() -> None:
         base_url=args.api_url,
         mcp_url=args.mcp_url,
     ) as client:
+        cap = Capture(client)
+
+        @cap.tool("lookup_order")
+        def lookup_order(order_id: str) -> dict:
+            # simulated order lookup
+            return {"id": order_id, "status": "delivered", "amount_usd": 980.0}
+
+        @cap.llm("assess_risk")
+        def assess_risk(order: dict) -> dict:
+            # simulated risk classifier
+            return {"risk_level": "medium", "confidence": 0.87}
+
         for i, sc in enumerate(scenarios, 1):
             print(f"\n[step {i}] proposing: {sc['title']}")
-            ticket = client.request_approval(
-                sc["title"],
-                sc["action_payload"],
-                description=sc["description"],
-                risk_level=sc["risk_level"],
-            )
+            with cap.state("request_created") as s:
+                s.before = {"ref": None}
+                ticket = client.request_approval(
+                    sc["title"],
+                    sc["action_payload"],
+                    description=sc["description"],
+                    risk_level=sc["risk_level"],
+                )
+                s.after = {"ref": ticket.ref, "status": ticket.status}
             print(f"  -> ticket {ticket.ref} status={ticket.status}")
+
+            order = lookup_order(order_id="ORD-77241")
+            risk = assess_risk(order=order)
+            print(f"  -> context: {risk}")
 
             decision = client.wait_for_decision(ticket.id, timeout_s=120, poll_interval_s=1.0)
             print(f"  -> decision status={decision['status']} approved={decision['approved']}")
@@ -111,6 +131,9 @@ def main() -> None:
                 note = "Action blocked; escalated to support lead."
             fb = client.submit_feedback(ticket.id, outcome, note=note)
             print(f"  -> feedback outcome={fb['outcome']}")
+
+        cap.close()
+        print(f"\ncapture stats: {cap.stats}")
 
 
 if __name__ == "__main__":

@@ -108,6 +108,57 @@ crew = Crew(
 
 Every `human_input` step becomes a Sphinx approval ticket; the returned value is the human-amended payload (or `{"_blocked": true, "reason": ...}` when rejected).
 
+## Decision capture (`Capture`)
+
+The `Capture` class intercepts **every** agent step — tool calls, LLM inferences,
+state changes — and streams them into the tamper-evident capture trail, so you can
+afterwards answer "what did this agent do, in what order, and did it match the
+approved plan?". Each event is hashed (SHA3-256), chained to the previous event
+and signed (Ed25519); `GET /api/capture/verify` re-checks the whole chain.
+
+Capture is fail-open: if the control plane is unreachable, events are dropped
+with a log line and the agent's main path never blocks.
+
+```python
+from sphinx_sdk import SphinxClient, Capture
+
+client = SphinxClient(agent_id="refund-agent", session_id="sess-1")
+cap = Capture(client)                      # buffered; flush() sends
+
+# 1. wrap a tool — records input + output on every call
+@cap.tool("lookup_order")
+def lookup_order(order_id: str) -> dict:
+    ...
+
+# 2. wrap an LLM call — records prompt + response
+@cap.llm("assess_risk")
+def call_llm(messages: list[dict]) -> dict:
+    ...
+
+# 3. record a state change
+with cap.state("request_created") as s:
+    s.before = {"ref": None}
+    s.after = {"ref": "SPH-E126A0"}
+
+cap.flush()      # guarantee delivery
+cap.close()      # flush + release
+```
+
+API summary:
+
+| member | purpose |
+|--------|---------|
+| `cap.tool(name=None, metadata=None, capture_args=True)` | decorator wrapping a tool function; records input/output, errors become `status="error"` events and are re-raised |
+| `cap.tools({name: fn, ...})` | wrap a whole tool registry in one call |
+| `cap.llm(name=None, metadata=None)` | decorator wrapping an LLM call (messages in, response out) |
+| `cap.state(key, metadata=None)` | context manager: `s.before` / `s.after` recorded as a state change |
+| `cap.record(event_type, name, input_payload=..., output_payload=..., metadata=..., status=...)` | manual recording |
+| `cap.flush()` / `cap.close()` | send buffered events (batching with `batch_size`, default 20) |
+| `cap.stats` | `{buffered, sent, dropped, enabled}` |
+
+Captured events are visible via `GET /api/capture` and their integrity via
+`GET /api/capture/verify` (see `docs/API.md`).
+
 ## Demo agent
 
 `sdk/examples/demo_agent.py` runs the full lifecycle (propose → approve → read payload → feedback) for three scenarios over REST or MCP:

@@ -75,3 +75,34 @@ class TestDemoAgent:
         for it in items:
             if it["ref"] in refs:
                 assert it["outcome"] is not None  # feedback loop closed
+
+    def test_demo_capture_trail_verifiable(self, live):
+        """The demo agent's capture events form a valid, verifiable chain.
+
+        The live stack is module-scoped and shared, so earlier demo runs may
+        have added events too; assert every event is valid and the run adds
+        exactly 9 (3 steps × state/tool/llm) per execution.
+        """
+        before = httpx.get(
+            f"{live.api_url}/api/capture",
+            params={"agent_id": "refund-agent", "session_id": "sess-refund-01", "limit": 1},
+            timeout=5,
+        ).json()["total"]
+        _run_demo(live, "rest")
+        r = httpx.get(
+            f"{live.api_url}/api/capture",
+            params={"agent_id": "refund-agent", "session_id": "sess-refund-01", "limit": 200},
+            timeout=5,
+        )
+        body = r.json()
+        items = body["items"]
+        assert body["total"] == before + 9, f"expected +9 capture events, got +{body['total'] - before}"
+        types = {ev["event_type"] for ev in items}
+        assert types == {"tool_call", "llm_inference", "state_change"}
+        v = httpx.get(
+            f"{live.api_url}/api/capture/verify",
+            params={"agent_id": "refund-agent", "session_id": "sess-refund-01"},
+            timeout=5,
+        ).json()
+        assert v["valid"] is True
+        assert v["checked"] == body["total"]

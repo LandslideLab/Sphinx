@@ -64,3 +64,20 @@ class RequestListParams(BaseModel):
     q: str | None = None
     limit: int = Field(default=50, ge=1, le=500)
     offset: int = Field(default=0, ge=0)
+
+
+class CaptureEventIn(BaseModel):
+    """One capture event as submitted by the SDK (chain fields are server-assigned)."""
+
+    event_type: str = Field(pattern="^(tool_call|llm_inference|state_change)$")
+    event_name: str = ""
+    input_payload: dict = {}
+    output_payload: dict = {}
+    metadata: dict | None = None
+    status: str = Field(default="ok", pattern="^(ok|error)$")
+
+
+class CaptureBatchIn(BaseModel):
+    agent_id: str = Field(min_length=1)
+    session_id: str = ""
+    events: list[CaptureEventIn] = Field(min_length=1, max_length=500)

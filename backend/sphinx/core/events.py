@@ -39,6 +39,7 @@ bus = EventBus()
 TOPIC_REQUESTS = "requests"
 TOPIC_DECISIONS = "decisions"
 TOPIC_POLICIES = "policies"
+TOPIC_CAPTURE = "capture"
 
 _loop: asyncio.AbstractEventLoop | None = None
 

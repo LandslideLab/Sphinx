@@ -101,6 +101,47 @@ A low-risk request under an `auto_approve_below_risk` policy is returned immedia
 |-------|--------|---------|
 | `requests` | `created`, `decided`, `escalated`, `cancelled`, `feedback` | full request dict |
 | `policies` | `created`, `updated` | policy dict |
+| `capture` | `ingested` | `{event_id, agent_id, event_type}` |
+
+## Decision capture
+
+Every agent step — tool call, LLM inference, state change — can be streamed into a
+**tamper-evident capture trail**: events are chained per `(agent_id, session_id)`
+with a SHA3-256 content hash, linked via `prev_hash`, and signed with the org's
+Ed25519 key. The chain can be independently re-verified at any time.
+
+### `POST /api/capture` — ingest events
+
+```json
+{
+  "agent_id": "refund-agent",
+  "session_id": "sess-1",
+  "events": [
+    {
+      "event_type": "tool_call",
+      "event_name": "lookup_order",
+      "input_payload": {"order_id": "ORD-1"},
+      "output_payload": {"order": {"id": "ORD-1"}},
+      "metadata": {"duration_ms": 41},
+      "status": "ok"
+    }
+  ]
+}
+```
+
+`event_type` ∈ `tool_call` | `llm_inference` | `state_change`; `status` ∈ `ok` | `error`.
+Returns `{received, agent_id, session_id, first, last}` where `first`/`last` include
+the server-assigned `sequence`, `content_hash`, `prev_hash` and `signature`.
+
+### `GET /api/capture?agent_id=&session_id=&event_type=&limit=&offset=`
+
+Lists capture events (newest first). Each item is a full event dict with chain fields.
+
+### `GET /api/capture/verify?agent_id=&session_id=`
+
+Recomputes every content hash, checks `prev_hash` linkage and Ed25519 signatures.
+Returns `{valid, checked, chains, errors}` — any tamper (edited payload, broken
+link, forged signature) makes `valid: false` with per-event error strings.
 
 ## Error conventions
 

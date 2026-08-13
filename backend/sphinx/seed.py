@@ -268,11 +268,68 @@ def seed_demo(db) -> None:
     db.commit()
 
 
+def seed_capture(db) -> None:
+    """Seed one realistic capture chain so the capture trail is populated."""
+    from sphinx.core import capture_service
+    from sphinx.models import CaptureEvent
+
+    if db.query(CaptureEvent).count() > 0:
+        return
+    signing_key = capture_service.get_signing_key(db)
+    agent = "refund-agent"
+    session = "sess-capture-8801"
+    events = [
+        {
+            "event_type": "llm_inference",
+            "event_name": "classify_intent",
+            "input_payload": {"messages": [{"role": "user", "content": "Customer ORD-88231 wants a refund."}]},
+            "output_payload": {"intent": "refund_request", "confidence": 0.94, "model": "gpt-4.1"},
+            "metadata": {"model": "gpt-4.1", "tokens_in": 312, "tokens_out": 48, "duration_ms": 620},
+        },
+        {
+            "event_type": "tool_call",
+            "event_name": "lookup_order",
+            "input_payload": {"order_id": "ORD-88231"},
+            "output_payload": {"order": {"id": "ORD-88231", "amount_usd": 1240.0, "status": "delivered"}},
+            "metadata": {"tool": "order_db", "duration_ms": 41},
+        },
+        {
+            "event_type": "llm_inference",
+            "event_name": "assess_risk",
+            "input_payload": {"order": {"id": "ORD-88231", "amount_usd": 1240.0}, "customer": {"trust": "medium"}},
+            "output_payload": {"risk_level": "medium", "reason": "duplicate charge history"},
+            "metadata": {"model": "gpt-4.1", "tokens_in": 540, "tokens_out": 32, "duration_ms": 510},
+        },
+        {
+            "event_type": "state_change",
+            "event_name": "request_created",
+            "input_payload": {"ref": None},
+            "output_payload": {"ref": "SPH-E126A0", "status": "pending"},
+            "metadata": {"reason": "risk_level=medium requires review"},
+        },
+        {
+            "event_type": "tool_call",
+            "event_name": "request_approval",
+            "input_payload": {"action": "refund", "order_id": "ORD-88231", "amount_usd": 1240.0},
+            "output_payload": {"accepted": True, "ticket": "SPH-E126A0"},
+            "metadata": {"tool": "sphinx_control_plane", "duration_ms": 88},
+        },
+    ]
+    capture_service.ingest_batch(
+        db,
+        signing_key=signing_key,
+        agent_id=agent,
+        session_id=session,
+        events=events,
+    )
+
+
 def main() -> None:
     init_db()
     with SessionLocal() as db:
         seed_policies(db)
         seed_demo(db)
+        seed_capture(db)
     print("Seeded sphinx demo data.")
 
 

@@ -56,6 +56,12 @@ class DecisionSource(str, enum.Enum):
     AGENT_FEEDBACK = "agent_feedback"
 
 
+class CaptureEventType(str, enum.Enum):
+    TOOL_CALL = "tool_call"
+    LLM_INFERENCE = "llm_inference"
+    STATE_CHANGE = "state_change"
+
+
 class Outcome(str, enum.Enum):
     SUCCESS = "success"
     FAILURE = "failure"
@@ -221,3 +227,60 @@ class DecisionLog(Base):
             "note": self.note,
             "created_at": self.created_at.isoformat(),
         }
+
+
+class CaptureEvent(Base):
+    """One recorded step of an agent run: a tool call, an LLM inference, or a
+    state change. Events are chained per (agent_id, session_id) into a
+    tamper-evident hash chain (SHA3-256) with Ed25519 signatures, so the
+    decision trail can be independently verified.
+    """
+
+    __tablename__ = "capture_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(128), index=True, default="")
+    agent_id: Mapped[str] = mapped_column(String(128), index=True)
+    event_type: Mapped[CaptureEventType] = mapped_column(Enum(CaptureEventType), index=True)
+    event_name: Mapped[str] = mapped_column(String(256), default="")
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+    input_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="ok")
+
+    # tamper-evidence chain fields
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)  # sha3-256 of canonical(event)
+    prev_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    signature: Mapped[str] = mapped_column(Text, default="")  # Ed25519 over prev_hash + content_hash
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "agent_id": self.agent_id,
+            "event_type": self.event_type.value,
+            "event_name": self.event_name,
+            "sequence": self.sequence,
+            "input_payload": self.input_payload,
+            "output_payload": self.output_payload,
+            "metadata": self.metadata_,
+            "status": self.status,
+            "content_hash": self.content_hash,
+            "prev_hash": self.prev_hash,
+            "signature": self.signature,
+            "created_at": self.created_at.isoformat(),
+        }
+
+
+class SigningKey(Base):
+    """Org Ed25519 signing key (32-byte seed, base64). Created lazily on first
+    capture ingestion so the whole event chain can be verified later."""
+
+    __tablename__ = "signing_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    seed_b64: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

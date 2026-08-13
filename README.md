@@ -7,6 +7,7 @@ Sphinx is the missing middle layer between agent frameworks and the humans who m
 - **Unified approval entry point** — one web console + one approval queue for *every* framework, instead of one bespoke UI per framework.
 - **Approval SLA with auto-degradation** — timeouts that escalate, auto-approve or auto-reject per policy, so "human-in-the-loop" does not decay into "blind clicking OK".
 - **Decision log & feedback loop** — records the delta between what the agent proposed and what a human decided, and feeds governance metrics: escalation rate, error escape rate, reviewer agreement, correction rate, SLA compliance, decision latency.
+- **Full decision capture** — intercepts *every* tool call, LLM inference and state change into a tamper-evident trail (SHA3-256 hash chain + Ed25519 signatures), verifiable anytime via `GET /api/capture/verify`.
 - **MCP-native** — every capability is exposed as MCP tools, aligned with the 2026 protocol convergence direction. Any MCP-capable agent can request approval without new SDK code.
 - **Framework-agnostic SDK** — one Python SDK with drop-in adapters for LangGraph, OpenAI tool-calling and CrewAI.
 
@@ -30,14 +31,14 @@ The web console ships with a live approval queue, a searchable decision log, gov
 
 ```
 .
-├── backend/              FastAPI + SQLAlchemy control plane (REST API, WebSocket, MCP server, policy engine, metrics)
+├── backend/              FastAPI + SQLAlchemy control plane (REST API, WebSocket, MCP server, policy engine, metrics, capture chain)
 │   └── sphinx/
-│       ├── api/          REST + WebSocket endpoints
-│       ├── core/         policy engine, metrics, event bus, delta diffing, shared services
+│       ├── api/          REST + WebSocket endpoints (requests, policies, capture)
+│       ├── core/         policy engine, metrics, event bus, delta diffing, capture chain, shared services
 │       ├── mcp/          FastMCP server exposing sphinx_* tools
-│       └── models.py     ApprovalRequest / Policy / DecisionLog
+│       └── models.py     ApprovalRequest / Policy / DecisionLog / CaptureEvent
 ├── sdk/                  Python SDK + framework adapters (sphinx-sdk)
-│   └── sphinx_sdk/       SphinxClient (REST or MCP transport), HITLGuard, ApprovalGate, CrewAI callback
+│   └── sphinx_sdk/       SphinxClient (REST or MCP transport), Capture, HITLGuard, ApprovalGate, CrewAI callback
 ├── web/                  React + Vite + TS console: Queue / Decisions / Metrics / Policies
 ├── docker/               Dockerfiles + nginx proxy config
 ├── docker-compose.yml    one-command stack: api :8001, mcp :8100, web :8080
@@ -196,11 +197,44 @@ See `docs/SDK.md` for each pattern.
 
 ---
 
+### Capturing every agent step
+
+Wrap tools, LLM calls and state changes to record the full decision trail — every
+step is hashed (SHA3-256), chained and Ed25519-signed, and can be verified at any
+time:
+
+```python
+from sphinx_sdk import SphinxClient, Capture
+
+with SphinxClient(agent_id="refund-agent", session_id="sess-1") as client:
+    cap = Capture(client)
+
+    @cap.tool("lookup_order")
+    def lookup_order(order_id: str): ...          # records input + output
+
+    @cap.llm("assess_risk")
+    def call_llm(messages): ...                   # records prompt + response
+
+    with cap.state("request_created") as s:       # records a state change
+        s.before = {"ref": None}
+        s.after = {"ref": "SPH-E126A0"}
+
+    cap.flush()                                   # send buffered events
+
+# later: verify the trail is untampered
+curl "http://localhost:8001/api/capture/verify?agent_id=refund-agent"
+# → {"valid": true, "checked": 5, "chains": 1, "errors": []}
+```
+
+Capture is fail-open: if Sphinx is unreachable, events are dropped with a log
+line and the agent's main path never blocks. See `docs/SDK.md` and
+`docs/API.md` for the full `Capture` API and capture endpoints.
+
 ## Testing
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest -q          # 107 tests: unit + API + WS + MCP + SDK + demo agent E2E
+../.venv/bin/python -m pytest -q          # 156 tests: unit + API + WS + MCP + SDK + capture chain + demo agent E2E
 ```
 
 The suite covers the service layer, delta diffing, metrics math, the SLA scheduler, the full REST surface, WebSocket live events, MCP tools over a real streamable-HTTP server, the SDK transports and adapters, seed data, and a live end-to-end demo-agent run. Full results in `docs/TEST_REPORT.md`.

@@ -216,6 +216,7 @@ class SphinxClient:
         self.agent_id = agent_id
         self.framework = framework
         self.session_id = session_id
+        self._rest_base_url = base_url
         if transport == "mcp":
             self._transport: BaseTransport = McpTransport(url=mcp_url)
         else:
@@ -264,6 +265,27 @@ class SphinxClient:
 
     def list_policies(self) -> list[dict]:
         return self._transport.list_policies()
+
+    def capture_events(self, events: list[dict]) -> dict:
+        """Upload a batch of capture events for this client's agent/session.
+
+        Uses the REST API directly (works with both REST and MCP transports).
+        """
+        if isinstance(self._transport, RestTransport):
+            r = self._transport._client.post(
+                "/api/capture",
+                json={"agent_id": self.agent_id, "session_id": self.session_id, "events": events},
+            )
+            _raise(r)
+            return r.json()
+        # MCP transport: capture is an HTTP concern; post to the REST base URL.
+        r = httpx.post(
+            f"{self._rest_base_url}/api/capture",
+            json={"agent_id": self.agent_id, "session_id": self.session_id, "events": events},
+            timeout=30.0,
+        )
+        _raise(r)
+        return r.json()
 
     def close(self) -> None:
         if isinstance(self._transport, McpTransport):

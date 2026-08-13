@@ -6,7 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from sphinx.api import policies, requests, ws
+from sphinx.api import capture, policies, requests, ws
 from sphinx.config import settings
 from sphinx.core import policy_engine
 from sphinx.core.events import set_event_loop
@@ -27,10 +27,11 @@ async def lifespan(app: FastAPI):
         with SessionLocal() as db:
             seed_policies(db)
     if settings.seed_demo_data:
-        from sphinx.seed import seed_demo
+        from sphinx.seed import seed_capture, seed_demo
 
         with SessionLocal() as db:
             seed_demo(db)
+            seed_capture(db)
     policy_engine.start()
     yield
     policy_engine.stop()
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
 
     app.include_router(requests.router)
     app.include_router(policies.router)
+    app.include_router(capture.router)
     app.add_api_websocket_route("/api/ws", ws.ws_endpoint)
     return app
 

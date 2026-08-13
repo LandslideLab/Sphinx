@@ -2,8 +2,8 @@
 
 **Project:** Sphinx · Agent HITL Control Plane (LANDSLIDE)
 **Date:** 2026-08-13
-**Commit:** `414c71e` (baseline) + redesign & frontend upgrade on top
-**Result:** ✅ **146 / 146 automated tests passed** (backend 109 + frontend 37) + live end-to-end verification passed
+**Commit:** `414c71e` (baseline) + redesign & frontend upgrade on top + full decision-capture layer
+**Result:** ✅ **193 / 193 automated tests passed** (backend 156 + frontend 37) + live end-to-end verification passed
 
 ---
 
@@ -11,13 +11,13 @@
 
 Sphinx was verified against every capability in its spec: the REST control plane, WebSocket live events, the SLA timeout engine, governance metrics, the MCP server, the Python SDK with all three framework adapters (LangGraph / OpenAI / CrewAI), the demo agent, seed data, and the web console.
 
-This session delivered an **Apple HIG + Glassmorphism redesign of the web console**, added `risk` filtering and `q` search to the backend, and stood up a **frontend test suite** (Vitest + jsdom + Testing Library) that did not exist before.
+This session delivered an **Apple HIG + Glassmorphism redesign of the web console**, added `risk` filtering and `q` search to the backend, stood up a **frontend test suite** (Vitest + jsdom + Testing Library), and then added the **full decision-capture layer**: every tool call, LLM inference and state change is intercepted by the SDK, streamed into a SHA3-256 hash chain signed with Ed25519, and verifiable through the API.
 
-- **109 backend automated tests** — baseline 107 (unchanged) + 2 new (`test_list_risk_filter`, `test_filter_decisions_by_q`). 0 failures, 0 errors, 0 skips.
+- **156 backend automated tests** — baseline 107 + 2 filters + **47 new capture tests** (`test_capture_chain.py` 15, `test_capture_api.py` 16, `test_sdk_capture.py` 14, `test_demo_agent.py` +1 capture E2E). 0 failures, 0 errors, 0 skips.
 - **37 frontend automated tests** — 9 files across pages, components, and lib utilities. 0 failures.
 - **Live end-to-end flows** exercised against real running servers (REST :8001, MCP :8100, Web console dev server :5173 with `/api` and `/mcp` proxy).
-- **Web console** compiles clean (`tsc -b && vite build`) and is deployed to a live preview.
-- **Bugs found and fixed during verification:** baseline fixes (dead WebSocket event bus, wrong `deadline`, optional `None` bodies, CrewAI `framework` kwarg, policy `on_timeout` enum) plus this session's fixes: `format.ts` JSX-in-`.ts` parse error, `key++` in JSX expression, unstable `load` callback causing a render churn loop in the Decisions page, and a missing `ws: true` on the `/api` Vite proxy that silently broke live updates. All are covered by tests.
+- **Web console** compiles clean (`tsc -b && vite build`).
+- **Bugs found and fixed during verification:** baseline fixes (dead WebSocket event bus, wrong `deadline`, optional `None` bodies, CrewAI `framework` kwarg, policy `on_timeout` enum) plus this session's fixes: `format.ts` JSX-in-`.ts` parse error, `key++` in JSX expression, unstable `load` callback causing a render churn loop in the Decisions page, a missing `ws: true` on the `/api` Vite proxy that silently broke live updates, and three test-authoring issues in the new capture suite (positional-arg payload shape, multi-event chain linkage, shared live-stack event accumulation). All are covered by tests.
 
 ---
 
@@ -47,9 +47,12 @@ This session delivered an **Apple HIG + Glassmorphism redesign of the web consol
 | `test_ws.py` | 6 | WebSocket live events: create→`created`, approve→`decided`, reject/escalate/cancel/feedback topics, policy events, multi-client fan-out, disconnect resilience |
 | `test_mcp.py` | 7 | MCP server over real streamable HTTP: list policies, request + status, decision after approve, wait-for-decision, feedback, `sphinx://requests/{id}` resource, full lifecycle via `SphinxClient` |
 | `test_sdk.py` | 13 | RestTransport round-trip + timeout, `SphinxClient` flow, LangGraph `HITLGuard` + `hitl_interrupt_node`, OpenAI `ApprovalGate` (dict + JSON string + non-blocking + event callback), CrewAI callback (approved + blocked) |
-| `test_demo_agent.py` | 3 | demo agent end-to-end over REST and MCP transports; tickets visible via API with closed feedback loop |
+| `test_demo_agent.py` | 4 | demo agent end-to-end over REST and MCP transports; tickets visible via API with closed feedback loop; capture trail verifiable (+9 events per run, hash chain valid) |
 | `test_seed.py` | 5 | default policies, 28 demo rows, idempotency, plausible metrics, agent/framework diversity |
-| **Total** | **109** | baseline 107 + `risk` filter + decisions `q` search |
+| `test_capture_chain.py` | 15 | canonical serialization determinism, SHA3-256 hash stability + field sensitivity, Ed25519 sign/verify round-trip + wrong-hash/wrong-key/link tamper rejection, seed round-trip, multi-event chain verification, payload tamper / broken link / forged signature detection, multi-chain isolation |
+| `test_capture_api.py` | 16 | capture ingest (single/batch chaining/validation), list + event-type/session filters + pagination, verify endpoint (valid chain, multi-session, DB tamper detection, empty), signing-key persistence |
+| `test_sdk_capture.py` | 14 | `@cap.tool` input/output/error capture, name defaulting, metadata + duration, `cap.tools` registry wrap, `@cap.llm` prompt/response/error, `cap.state` context manager (ok/error), batching (flush/auto-flush/close/disabled), failure isolation (server down, non-JSONable args), REST transport round-trip + verify against live stack |
+| **Total** | **156** | baseline 107 + `risk` filter + decisions `q` search + **47 capture tests** |
 
 ### Full run output
 
@@ -57,6 +60,14 @@ This session delivered an **Apple HIG + Glassmorphism redesign of the web consol
 ........................................................................ [ 66%]
 .....................................                                    [100%]
 109 passed in 42.64s
+```
+
+### Current full run output (capture layer added)
+
+```
+........................................................................ [ 92%]
+............                                                             [100%]
+156 passed in 60.53s (0:01:00)
 ```
 
 ---
@@ -103,11 +114,15 @@ Test Files  9 passed (9)
 | 10 | LangGraph / OpenAI / CrewAI adapters | `test_sdk.py` |
 | 11 | Demo agent full lifecycle (REST + MCP) | `test_demo_agent.py` |
 | 12 | Seed data realism + idempotency | `test_seed.py` |
-| 13 | **Queue page**: risk/framework/status filters, detail expand, approve/reject/escalate modals, skeleton loading | `Queue.test.tsx` (7) |
-| 14 | **Decisions page**: delta diff view, agreement badge, source filter, paginated load-more | `Decisions.test.tsx` (4) |
-| 15 | **Metrics page**: headline KPIs, governance gauges, risk breakdown, time window | `Metrics.test.tsx` (4) |
-| 16 | **Policies page**: SLA display, disable toggle, edit/create modal | `Policies.test.tsx` (4) |
-| 17 | UI primitives: toast queue + auto-dismiss, SLA countdown, delta view, JSON tokenizer, format helpers | components/lib tests (18) |
+| 13 | **Decision capture**: SDK intercepts every tool call / LLM inference / state change | `test_sdk_capture.py` (14) |
+| 14 | **Tamper-evident chain**: SHA3-256 content hash + Ed25519 signature per event, prev-hash linkage | `test_capture_chain.py` (15) |
+| 15 | **Capture API**: batch ingest, list/filter, `GET /api/capture/verify` chain verification | `test_capture_api.py` (16) |
+| 16 | **Capture E2E**: demo agent emits 9 events/run, chain verifies valid | `test_demo_agent.py` |
+| 17 | **Queue page**: risk/framework/status filters, detail expand, approve/reject/escalate modals, skeleton loading | `Queue.test.tsx` (7) |
+| 18 | **Decisions page**: delta diff view, agreement badge, source filter, paginated load-more | `Decisions.test.tsx` (4) |
+| 19 | **Metrics page**: headline KPIs, governance gauges, risk breakdown, time window | `Metrics.test.tsx` (4) |
+| 20 | **Policies page**: SLA display, disable toggle, edit/create modal | `Policies.test.tsx` (4) |
+| 21 | UI primitives: toast queue + auto-dismiss, SLA countdown, delta view, JSON tokenizer, format helpers | components/lib tests (18) |
 
 ---
 
@@ -152,6 +167,16 @@ Built with `tsc -b && vite build` (0 errors) and served at:
 
 Index title, JS/CSS assets, and `/api/metrics` all return 200 through the preview proxy. ✅
 
+### 6.6 Decision capture (live)
+
+| check | result |
+|-------|--------|
+| `POST /api/capture` batch of 5 events (seed chain) | `received: 5`, first `sequence: 1`, last `prev_hash` links to previous event ✅ |
+| `GET /api/capture?agent_id=refund-agent` | 5 seeded events, all three event types present ✅ |
+| `GET /api/capture/verify?agent_id=refund-agent` | `valid: true`, `checked: 5`, `chains: 1` ✅ |
+| SDK demo agent run | +9 events (3 steps × state/tool/llm), chain verifies `valid: true` ✅ |
+| DB tamper simulation (edit stored `output_payload`) | verify reports `content hash mismatch`, `valid: false` ✅ |
+
 ---
 
 ## 7. Bugs found & fixed (now regression-tested)
@@ -191,7 +216,7 @@ python3 -m venv .venv
 cd web && npm install
 
 # 2. run the full backend suite
-cd backend && ../.venv/bin/python -m pytest -q        # → 109 passed
+cd backend && ../.venv/bin/python -m pytest -q        # → 156 passed
 
 # 3. run the full frontend suite
 cd web && npx vitest run                                # → 37 passed
