@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useState } from 'react'
 import type { ReactNode } from 'react'
+import { CheckIcon, XIcon } from './Icons'
 
 interface Toast {
   id: number
@@ -23,8 +24,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="toast">
         {items.map((t) => (
-          <div key={t.id} className={`toast-item ${t.kind}`}>
-            {t.message}
+          <div key={t.id} className={`toast-item ${t.kind}`} role="status">
+            <span className="t-ico">{t.kind === 'success' ? <CheckIcon size={11} /> : t.kind === 'error' ? <XIcon size={11} /> : 'i'}</span>
+            <span>{t.message}</span>
           </div>
         ))}
       </div>

@@ -33,9 +33,16 @@ export const STATUS_LABEL: Record<RequestStatus, string> = {
 
 export const RISK_LABEL: Record<RiskLevel, string> = {
   low: 'Low',
-  medium: 'Med',
+  medium: 'Medium',
   high: 'High',
-  critical: 'Crit',
+  critical: 'Critical',
+}
+
+export const RISK_COLOR: Record<RiskLevel, string> = {
+  low: '#22a06b',
+  medium: '#e8930c',
+  high: '#ea580c',
+  critical: '#f43f3f',
 }
 
 export function riskBadgeClass(r: RiskLevel): string {

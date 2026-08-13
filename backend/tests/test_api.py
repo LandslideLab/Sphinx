@@ -69,6 +69,18 @@ class TestRequests:
         assert r["total"] == 1
         assert r["items"][0]["agent_id"] == "filter-agent"
 
+    def test_list_risk_filter(self, client):
+        _create(client, title="risk crit ticket 8842", risk_level="critical", agent_id="risk-filter-agent")
+        _create(client, title="risk low ticket 8843", risk_level="low", agent_id="risk-filter-agent")
+        r = client.get("/api/requests", params={"risk": "critical", "agent_id": "risk-filter-agent"}).json()
+        assert r["total"] == 1
+        assert r["items"][0]["risk_level"] == "critical"
+        r2 = client.get("/api/requests", params={"risk": "low", "agent_id": "risk-filter-agent"}).json()
+        assert r2["total"] == 1
+        assert r2["items"][0]["risk_level"] == "low"
+        r3 = client.get("/api/requests", params={"risk": "bogus"})
+        assert r3.status_code == 400
+
     def test_list_search_q(self, client):
         _create(client, title="UniqueSearchableTitleXYZ")
         r = client.get("/api/requests", params={"q": "UniqueSearchableTitleXYZ"}).json()
@@ -240,6 +252,17 @@ class TestDecisions:
         mine_disagreed = [d for d in disagreed["items"] if d["request_id"] == req["id"]]
         assert len(mine_disagreed) == 1
         assert all(d["request_id"] != req["id"] for d in agreed["items"])
+
+    def test_filter_decisions_by_q(self, client):
+        req = _create(client)
+        client.post(
+            f"/api/requests/{req['id']}/approve",
+            json={"reviewer_id": "reviewer-xyz789", "note": "looks fine"},
+        )
+        r = client.get("/api/decisions", params={"q": "reviewer-xyz789"}).json()
+        assert r["total"] == 1
+        assert r["items"][0]["request_id"] == req["id"]
+        assert client.get("/api/decisions", params={"q": "no-such-reviewer-000"}).json()["total"] == 0
 
 
 class TestMetrics:

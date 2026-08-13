@@ -11,7 +11,7 @@ from sphinx.core.services import (
     submit_feedback,
 )
 from sphinx.db import get_db
-from sphinx.models import ApprovalRequest, RequestStatus
+from sphinx.models import ApprovalRequest, RequestStatus, RiskLevel
 from sphinx.schemas import DecideRequest, EscalateRequest, FeedbackRequest, RequestCreate
 
 router = APIRouter(prefix="/api/requests", tags=["requests"])
@@ -24,6 +24,7 @@ def list_requests(
     framework: str | None = None,
     agent_id: str | None = None,
     escalated: bool | None = None,
+    risk: str | None = None,
     q: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -40,6 +41,11 @@ def list_requests(
         query = query.where(ApprovalRequest.agent_id == agent_id)
     if escalated is not None:
         query = query.where(ApprovalRequest.escalated.is_(escalated))
+    if risk:
+        try:
+            query = query.where(ApprovalRequest.risk_level == RiskLevel(risk))
+        except ValueError:
+            raise HTTPException(400, f"invalid risk: {risk}")
     if q:
         like = f"%{q}%"
         query = query.where(

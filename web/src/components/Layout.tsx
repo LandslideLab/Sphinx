@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { usePendingCount } from '../lib/usePendingCount'
+import { DecisionsIcon, MetricsIcon, PoliciesIcon, QueueIcon, ShieldIcon } from './Icons'
 
 const NAV = [
-  { to: '/', label: 'Approval Queue', icon: '◫', end: true },
-  { to: '/decisions', label: 'Decision Log', icon: '⌾' },
-  { to: '/metrics', label: 'Governance Metrics', icon: '◔' },
-  { to: '/policies', label: 'SLA Policies', icon: '⚙' },
+  { to: '/', label: 'Approval Queue', Icon: QueueIcon, end: true },
+  { to: '/decisions', label: 'Decision Log', Icon: DecisionsIcon },
+  { to: '/metrics', label: 'Governance Metrics', Icon: MetricsIcon },
+  { to: '/policies', label: 'SLA Policies', Icon: PoliciesIcon },
 ]
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -22,14 +23,18 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="nav">
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
-              <span className="ico">{n.icon}</span>
-              <span>{n.label}</span>
-              {n.to === '/' && pending > 0 && <span style={{ marginLeft: 'auto' }} className="badge pending">{pending}</span>}
+          {NAV.map(({ to, label, Icon, end }) => (
+            <NavLink key={to} to={to} end={end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+              <span className="ico"><Icon /></span>
+              <span>{label}</span>
+              {to === '/' && pending > 0 && <span className="badge pending nav-count">{pending}</span>}
             </NavLink>
           ))}
         </nav>
+        <div className="sidebar-foot">
+          <div className="row"><ShieldIcon size={12} /> governance-first HITL</div>
+          <div className="row">v0.1 · MCP-native · SDK</div>
+        </div>
       </aside>
       <main className="main">{children}</main>
     </div>

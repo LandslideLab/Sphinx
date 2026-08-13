@@ -12,6 +12,20 @@ Sphinx is the missing middle layer between agent frameworks and the humans who m
 
 ---
 
+## Screenshots
+
+The web console ships with a live approval queue, a searchable decision log, governance KPIs and editable SLA policies.
+
+| Approval Queue | Decision Log |
+|---|---|
+| ![Approval Queue](docs/screenshots/queue.png) | ![Decision Log](docs/screenshots/decisions.png) |
+
+| Governance Metrics | SLA Policies |
+|---|---|
+| ![Governance Metrics](docs/screenshots/metrics.png) | ![SLA Policies](docs/screenshots/policies.png) |
+
+---
+
 ## Repository layout
 
 ```

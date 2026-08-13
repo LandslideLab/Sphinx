@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import { fmtDuration } from '../lib/format'
-import type { Metrics } from '../types'
+import { fmtDuration, RISK_COLOR } from '../lib/format'
+import type { Metrics, RiskLevel } from '../types'
+import { useLive } from '../lib/useLive'
 
 const RATES: { key: keyof Metrics['governance']; label: string; hint: string; goodWhen: 'low' | 'high' }[] = [
   { key: 'escalation_rate', label: 'Escalation rate', hint: 'requests escalated vs created', goodWhen: 'low' },
@@ -15,6 +16,7 @@ const RATES: { key: keyof Metrics['governance']; label: string; hint: string; go
 export function Metrics() {
   const [m, setM] = useState<Metrics | null>(null)
   const [since, setSince] = useState('')
+  const live = useLive(['decisions', 'requests'])
 
   const load = useCallback(async (days?: string) => {
     const d = await api.metrics(days || undefined)
@@ -24,12 +26,21 @@ export function Metrics() {
 
   useEffect(() => {
     load()
-    const t = setInterval(load, 8000)
+    const t = setInterval(() => load(since || undefined), 8000)
     return () => clearInterval(t)
-  }, [load])
+  }, [load, since])
+
+  useEffect(() => {
+    if (live.revision > 0) load(since || undefined)
+  }, [live.revision, load, since])
 
   if (!m) {
-    return <div className="empty"><span className="spinner" /> computing metrics…</div>
+    return (
+      <div className="empty">
+        <span className="spinner" />
+        <div>computing metrics…</div>
+      </div>
+    )
   }
 
   const g = m.governance
@@ -50,7 +61,8 @@ export function Metrics() {
           <div className="sub">Control-plane KPIs computed from the decision log &amp; feedback loop</div>
         </div>
         <div className="live">
-          <select value={since} onChange={(e) => load(e.target.value)}>
+          <span className={`dot${live.live ? ' pulse' : ''}`} />
+          <select className="ctl" value={since} onChange={(e) => load(e.target.value)}>
             <option value="">All time</option>
             <option value="7">Last 7 days</option>
             <option value="30">Last 30 days</option>
@@ -59,10 +71,26 @@ export function Metrics() {
       </div>
 
       <div className="grid stats" style={{ marginBottom: 18 }}>
-        <div className="card"><div className="stat-value">{m.totals.requests}</div><div className="stat-label">Total requests</div><div className="stat-sub">{m.totals.pending} pending now</div></div>
-        <div className="card"><div className="stat-value">{m.totals.escalated}</div><div className="stat-label">Escalated</div><div className="stat-sub">{g.escalation_rate}% of requests</div></div>
-        <div className="card"><div className="stat-value mono">{fmtDuration(m.latency.avg_seconds)}</div><div className="stat-label">Avg review latency</div><div className="stat-sub">p50 {fmtDuration(m.latency.p50_seconds)} · p95 {fmtDuration(m.latency.p95_seconds)}</div></div>
-        <div className="card"><div className="stat-value">{m.latency.human_reviews}</div><div className="stat-label">Human reviews</div><div className="stat-sub">{m.feedback.approved_with_feedback} with outcome feedback</div></div>
+        <div className="card">
+          <div className="stat-value">{m.totals.requests}</div>
+          <div className="stat-label">Total requests</div>
+          <div className="stat-sub">{m.totals.pending} pending now</div>
+        </div>
+        <div className="card">
+          <div className="stat-value">{m.totals.escalated}</div>
+          <div className="stat-label">Escalated</div>
+          <div className="stat-sub">{g.escalation_rate}% of requests</div>
+        </div>
+        <div className="card">
+          <div className="stat-value mono">{fmtDuration(m.latency.avg_seconds)}</div>
+          <div className="stat-label">Avg review latency</div>
+          <div className="stat-sub">p50 {fmtDuration(m.latency.p50_seconds)} · p95 {fmtDuration(m.latency.p95_seconds)}</div>
+        </div>
+        <div className="card">
+          <div className="stat-value">{m.latency.human_reviews}</div>
+          <div className="stat-label">Human reviews</div>
+          <div className="stat-sub">{m.feedback.approved_with_feedback} with outcome feedback</div>
+        </div>
       </div>
 
       <div className="grid two-col">
@@ -81,11 +109,14 @@ export function Metrics() {
 
         <div className="card">
           <h3>Risk breakdown</h3>
-          {Object.entries(m.risk).map(([level, v]) => (
+          {(Object.entries(m.risk) as [RiskLevel, { created: number; escalated: number }][]).map(([level, v]) => (
             <div className="bar-row" key={level}>
-              <div className="label" style={{ textTransform: 'capitalize' }}>{level}</div>
+              <div className="label">
+                <span className="risk-dot" style={{ background: RISK_COLOR[level] }} />
+                {level}
+              </div>
               <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${v.created ? Math.min(100, (v.escalated / Math.max(1, v.created)) * 100) : 0}%` }} />
+                <div className="bar-fill" style={{ width: `${v.created ? Math.min(100, (v.escalated / Math.max(1, v.created)) * 100) : 0}%`, background: `linear-gradient(90deg, ${RISK_COLOR[level]}, ${RISK_COLOR[level]}aa)` }} />
               </div>
               <div className="bar-val">{v.escalated}/{v.created}</div>
             </div>

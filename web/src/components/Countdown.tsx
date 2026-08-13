@@ -18,9 +18,13 @@ export function Countdown({ deadlineIso, timeoutSeconds }: { deadlineIso: string
   )
 }
 
-function fmt(ms: number): string {
+export function fmtRemaining(ms: number): string {
   const s = Math.floor(ms / 1000)
   if (s >= 3600) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`
   if (s >= 60) return `${Math.floor(s / 60)}m ${s % 60}s`
   return `${s}s`
+}
+
+function fmt(ms: number): string {
+  return fmtRemaining(ms)
 }

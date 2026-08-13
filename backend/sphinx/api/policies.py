@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from sphinx.core.events import TOPIC_POLICIES, publish_sync
 from sphinx.core.metrics import compute_metrics
 from sphinx.db import get_db
-from sphinx.models import DecisionLog, Policy, TimeoutAction
+from sphinx.models import ApprovalRequest, DecisionLog, Policy, TimeoutAction
 from sphinx.schemas import PolicyCreate, PolicyUpdate
 
 router = APIRouter(tags=["policies", "decisions", "metrics"])
@@ -62,6 +62,7 @@ def list_decisions(
     db: Session = Depends(get_db),
     source: str | None = None,
     agreement: bool | None = None,
+    q: str | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
@@ -70,6 +71,15 @@ def list_decisions(
         query = query.where(DecisionLog.source == source)
     if agreement is not None:
         query = query.where(DecisionLog.agreement.is_(agreement))
+    if q:
+        like = f"%{q}%"
+        query = query.join(DecisionLog.request).where(
+            or_(
+                ApprovalRequest.ref.ilike(like),
+                ApprovalRequest.title.ilike(like),
+                DecisionLog.reviewer_id.ilike(like),
+            )
+        )
     total = len(db.scalars(query).all())
     query = query.order_by(DecisionLog.created_at.desc()).offset(offset).limit(limit)
     rows = db.scalars(query).all()
